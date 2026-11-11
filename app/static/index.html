@@ -19,6 +19,10 @@
   header { padding: 20px 28px 12px; border-bottom: 1px solid var(--line); }
   header h1 { margin: 0 0 6px; font-size: 20px; }
   header p { margin: 0; color: var(--muted); font-size: 13px; }
+  nav { display: flex; gap: 14px; margin-bottom: 10px; font-size: 13px; }
+  nav a { color: var(--accent); text-decoration: none; }
+  nav a:hover { text-decoration: underline; }
+  nav a.active { color: var(--text); font-weight: 700; border-bottom: 2px solid var(--accent); }
   main { padding: 20px 28px 60px; max-width: 1500px; margin: 0 auto; }
   .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
   button {
@@ -81,15 +85,38 @@
   .summary-bar b { color: var(--accent); }
   .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
   .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .gateway-entry {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 16px; margin: 0 0 16px; font-size: 13px;
+  }
+  .gateway-entry .gw-title { font-weight: 700; color: var(--accent); }
+  .gateway-entry .gw-meta { color: var(--muted); }
+  .gateway-entry .gw-state { font-weight: 700; }
+  .gateway-entry .gw-state.on { color: #4ade80; }
+  .gateway-entry .gw-state.off { color: #f87171; }
+  .gateway-entry button { margin-left: auto; }
 </style>
 </head>
 <body>
 <header>
+  <nav>
+    <a href="/" class="active">规则差分台</a>
+    <a href="/gateway">TCP 访问网关</a>
+  </nav>
   <h1>防火墙规则变更差分台（IPv4 / TCP，首条匹配，默认拒绝）</h1>
   <p>粘贴旧、新两份有序 JSON 规则（各 ≤ 20 条），系统用边界切分精确枚举整个流量空间，输出全部且互不重叠的新增放行 / 新增阻断区域，不做抽样。</p>
+  <p style="margin-top:6px">需要按规则实时放行 TCP 流量并立即断开失去权限的长连接？进入
+    <a href="/gateway" style="color:var(--accent)">TCP 访问网关管理页</a>。</p>
 </header>
 
 <main>
+  <div class="gateway-entry" id="gateway-entry">
+    <span class="gw-title">TCP 访问网关</span>
+    <span class="gw-meta" id="gw-meta">状态读取中…</span>
+    <button type="button" id="btn-gateway">打开网关管理页</button>
+  </div>
+
   <div class="toolbar">
     <button class="primary" id="btn-analyze" type="button">分析变更</button>
     <button id="btn-example" type="button">载入重叠规则示例</button>
@@ -282,6 +309,24 @@ async function loadExample() {
     showErrors([{ sheet: null, message: `示例加载失败：${err}` }]);
   }
 }
+
+async function refreshGatewayEntry() {
+  try {
+    const resp = await fetch("/api/gateway", { cache: "no-store" });
+    const s = await resp.json();
+    $("gw-meta").innerHTML =
+      `<span class="gw-state ${s.running ? "on" : "off"}">${s.running ? "已运行" : "未运行"}</span>` +
+      ` · 固定上游 <span class="mono">${escapeHtml(s.upstreamAddress)}</span>` +
+      ` · 活动规则 <b>${escapeHtml(s.ruleCount)}</b> 条` +
+      ` · 当前连接 <b>${escapeHtml(s.connectionCount)}</b> 条`;
+  } catch (err) {
+    $("gw-meta").textContent = `状态读取失败：${err}`;
+  }
+}
+
+$("btn-gateway").addEventListener("click", () => { location.href = "/gateway"; });
+refreshGatewayEntry();
+setInterval(refreshGatewayEntry, 3000);
 
 $("btn-analyze").addEventListener("click", analyze);
 $("btn-example").addEventListener("click", loadExample);

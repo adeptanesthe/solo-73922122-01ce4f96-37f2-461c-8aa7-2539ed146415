@@ -1,11 +1,23 @@
 services:
-  firewall-rule-diff:
+  # 唯一的 TCP 访问网关进程：Web 管理页 + 进程内单例 TCP 网关
+  access-gateway:
     build: .
-    image: firewall-rule-diff:1.0.0
-    container_name: firewall-rule-diff
+    image: tcp-access-gateway:1.1.0
+    container_name: tcp-access-gateway
+    environment:
+      # 上游 IPv4 地址与端口在启动时固定；echo 由 Compose 内网 DNS 解析为 IPv4
+      GATEWAY_UPSTREAM_HOST: "tcp-echo"
+      GATEWAY_UPSTREAM_PORT: "9000"
+      # 容器内必须绑定 0.0.0.0，宿主机端口映射才可达
+      GATEWAY_LISTEN_HOST: "0.0.0.0"
+      GATEWAY_LISTEN_PORT: "9001"
+      GATEWAY_CONNECT_TIMEOUT: "5"
     ports:
-      # 默认仅绑定宿主机回环地址；如需对局域网开放，改为 "8000:8000"
-      - "127.0.0.1:8000:8000"
+      # 默认仅绑定宿主机回环地址；如需对局域网开放，改为 "8000:8000" / "9001:9001"
+      - "127.0.0.1:8000:8000"   # 浏览器管理入口 http://127.0.0.1:8000/gateway
+      - "127.0.0.1:9001:9001"   # TCP 访问网关
+    depends_on:
+      - tcp-echo
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health').status==200 else 1)"]
@@ -13,3 +25,13 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
+  # 本地临时服务（TCP 回显），用于验证双向透传与长连接撤权
+  tcp-echo:
+    build: .
+    image: tcp-access-gateway:1.1.0
+    container_name: tcp-echo
+    command: ["python", "-m", "app.echo_service", "--host", "0.0.0.0", "--port", "9000"]
+    expose:
+      - "9000"
+    restart: unless-stopped

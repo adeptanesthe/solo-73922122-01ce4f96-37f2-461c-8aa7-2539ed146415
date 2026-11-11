@@ -11,8 +11,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+COPY scripts ./scripts
 
-EXPOSE 8000
+# Web 管理页（HTTP）与 TCP 访问网关（TCP）分别监听
+EXPOSE 8000 9001
 
-# 容器内必须绑定 0.0.0.0，宿主机端口映射才可达
+# 重要：网关是进程内单例，必须只运行单个 uvicorn worker。
+# 默认 worker 数即为 1；不要追加 --workers N（N>1）或 --reload。
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

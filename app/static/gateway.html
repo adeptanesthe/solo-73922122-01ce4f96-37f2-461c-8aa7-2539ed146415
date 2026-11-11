@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TCP 访问网关管理</title>
+<style>
+  :root {
+    --bg: #0f172a; --panel: #1e293b; --panel2: #273449; --line: #334155;
+    --text: #e2e8f0; --muted: #94a3b8; --accent: #38bdf8;
+    --allow: #16a34a; --allow-bg: #052e16; --deny: #dc2626; --deny-bg: #2a0a0a;
+    --warn: #f59e0b; --err-bg: #3f1414; --err-line: #b91c1c;
+    --ok: #4ade80;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.6 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  header { padding: 18px 28px 12px; border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0 0 6px; font-size: 20px; }
+  header p { margin: 0; color: var(--muted); font-size: 13px; }
+  nav { display: flex; gap: 14px; margin-bottom: 10px; font-size: 13px; }
+  nav a { color: var(--accent); text-decoration: none; }
+  nav a:hover { text-decoration: underline; }
+  nav a.active { color: var(--text); font-weight: 700; border-bottom: 2px solid var(--accent); }
+  main { padding: 18px 28px 70px; max-width: 1500px; margin: 0 auto; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; }
+  .card .label { color: var(--muted); font-size: 12px; }
+  .card .value { font-weight: 700; font-size: 15px; margin-top: 3px; word-break: break-all; }
+  .card .sub { color: var(--muted); font-size: 12px; margin-top: 3px; }
+  .pill { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+  .pill.on { background: var(--allow-bg); color: var(--ok); border: 1px solid var(--allow); }
+  .pill.off { background: var(--deny-bg); color: #f87171; border: 1px solid var(--deny); }
+  .layout { display: grid; grid-template-columns: minmax(430px, 1fr) minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 1050px) { .layout { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .panel h2 { margin: 0; padding: 10px 14px; font-size: 14px; background: var(--panel2); border-bottom: 1px solid var(--line); }
+  .panel-body { padding: 14px; }
+  textarea {
+    width: 100%; min-height: 300px; resize: vertical; border: 1px solid var(--line); border-radius: 6px;
+    background: #0b1220; color: #dbeafe; font: 12px/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    padding: 12px 14px; outline: none; display: block;
+  }
+  .toolbar { display: flex; gap: 9px; flex-wrap: wrap; margin: 12px 0 6px; }
+  button {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 8px 15px; cursor: pointer; font-size: 13px;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+  button.primary { background: #0369a1; border-color: #0ea5e9; color: #fff; }
+  button.primary:hover:not(:disabled) { background: #0284c7; color: #fff; }
+  button.danger { background: #7f1d1d; border-color: #dc2626; color: #fecaca; }
+  button.danger:hover:not(:disabled) { background: #991b1b; color: #fff; }
+  #message { display: none; margin: 0 0 14px; border-radius: 10px; padding: 11px 15px; font-size: 13px; }
+  #message.show { display: block; }
+  #message.ok { border: 1px solid var(--allow); background: var(--allow-bg); color: #bbf7d0; }
+  #message.error { border: 1px solid var(--err-line); background: var(--err-bg); color: #fecaca; }
+  #message ul { margin: 6px 0 0; padding-left: 18px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; background: var(--panel2); }
+  td code { color: #bae6fd; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .empty { color: var(--muted); font-style: italic; padding: 10px 2px; }
+  .hint { color: var(--muted); font-size: 12px; }
+  .schema-help { margin-top: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; color: var(--muted); font-size: 12.5px; }
+  .schema-help code { color: var(--accent); }
+  .schema-help pre { background: #0b1220; border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; overflow-x: auto; color: #cbd5e1; margin: 8px 0 0; }
+  .demo { margin-top: 16px; background: #0b1220; border: 1px dashed var(--line); border-radius: 10px; padding: 12px 16px; font-size: 12.5px; color: var(--muted); }
+  .demo pre { margin: 8px 0 0; color: #cbd5e1; overflow-x: auto; font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; }
+</style>
+</head>
+<body>
+<header>
+  <nav>
+    <a href="/">规则差分台</a>
+    <a href="/gateway" class="active">TCP 访问网关</a>
+  </nav>
+  <h1>TCP 访问网关管理</h1>
+  <p>按有序 IPv4/TCP 规则放行，首条命中、默认拒绝；启用规则后，失去权限的已建立长连接会立即被断开，仍获准的连接不中断。</p>
+</header>
+
+<main>
+  <div id="message" role="alert"></div>
+
+  <div class="cards" id="status-cards"></div>
+
+  <div class="layout">
+    <section class="panel">
+      <h2>编辑并启用规则（最多 20 条）</h2>
+      <div class="panel-body">
+        <textarea id="rules-editor" spellcheck="false" placeholder="在此编辑规则 JSON 数组…"></textarea>
+        <div class="toolbar">
+          <button class="primary" id="btn-enable" type="button">启用规则</button>
+          <button id="btn-example" type="button">载入示例</button>
+          <button id="btn-reload" type="button">重置为活动规则</button>
+          <button class="danger" id="btn-clear" type="button">清空规则（默认拒绝）</button>
+        </div>
+        <div class="hint">规则切换是原子操作：校验失败时不会影响当前活动规则与连接。</div>
+        <div class="schema-help">
+          <strong>规则格式</strong>（沿用差分台格式）：<code>id</code>（同一组内唯一）、
+          <code>source</code>/<code>destination</code>（严格 IPv4 CIDR）、
+          <code>portRange</code>（目的端口闭区间）、<code>action</code>（<code>allow</code>/<code>deny</code>）。
+          判定使用真实对端源 IP 与启动配置固定的上游 IPv4 地址、端口；客户端自报地址不参与判定。
+          <pre>[
+  {"id": 1, "source": "0.0.0.0/0", "destination": "0.0.0.0/0",
+   "portRange": [9000, 9000], "action": "allow"}
+]</pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>活动规则</h2>
+      <div class="panel-body">
+        <div id="rules-table"><div class="empty">暂无活动规则（默认拒绝所有连接）。</div></div>
+      </div>
+    </section>
+  </div>
+
+  <section class="panel" style="margin-top:16px">
+    <h2>当前连接（每 2 秒自动刷新）</h2>
+    <div class="panel-body">
+      <div id="connections-table"><div class="empty">当前没有连接。</div></div>
+    </div>
+  </section>
+
+  <div class="demo">
+    <strong>长连接撤权演示</strong>：先启用一条允许规则（本地直连可用 <code>127.0.0.1/32</code>，
+    Docker 环境通常用 <code>0.0.0.0/0</code>），然后用 <code>nc 127.0.0.1 9001</code>
+    建立会话并收发数据；把规则改成拒绝后再发送数据，可看到连接立即被关闭。
+    也可运行 <code>python scripts/demo_revoke.py</code> 自动完成整个流程。
+  </div>
+</main>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let lastActiveRulesText = "";
+
+function escapeHtml(value) {
+  return String(value == null ? "" : value)
+    .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+}
+
+function showMessage(kind, text, errors) {
+  const box = $("message");
+  const items = (errors || []).map((e) => {
+    const parts = [];
+    if (e.ruleIndex != null) parts.push(`第 ${e.ruleIndex} 条规则`);
+    if (e.field) parts.push(`字段 ${e.field}`);
+    if (e.line != null) parts.push(`JSON 第 ${e.line} 行第 ${e.col} 列`);
+    const loc = parts.length ? `<span class="mono">${escapeHtml(parts.join(" · "))}：</span>` : "";
+    return `<li>${loc}${escapeHtml(e.message)}</li>`;
+  }).join("");
+  box.className = `show ${kind}`;
+  box.innerHTML = `${escapeHtml(text)}${items ? `<ul>${items}</ul>` : ""}`;
+  if (kind === "error") box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function clearMessage() {
+  $("message").className = "";
+  $("message").innerHTML = "";
+}
+
+function renderCards(s) {
+  const running = s.running
+    ? '<span class="pill on">RUNNING</span>'
+    : '<span class="pill off">STOPPED</span>';
+  const rulesPill = s.ruleCount
+    ? `<span class="pill on">${s.ruleCount} 条活动</span>`
+    : '<span class="pill off">空规则 · 默认拒绝</span>';
+  $("status-cards").innerHTML = `
+    <div class="card"><div class="label">网关进程</div><div class="value">${running}</div>
+      <div class="sub">单进程 · 监听 ${escapeHtml(s.listenHost)}:${escapeHtml(s.listenPort)}</div></div>
+    <div class="card"><div class="label">固定上游</div>
+      <div class="value mono">${escapeHtml(s.upstreamAddress)}</div>
+      <div class="sub">判定使用此 IPv4 地址与端口${s.upstreamIp ? `（${escapeHtml(s.upstreamIp)}）` : ""}</div></div>
+    <div class="card"><div class="label">活动规则</div><div class="value">${rulesPill}</div>
+      <div class="sub">上限 ${s.maxRules} 条 · 首条命中 · 默认拒绝</div></div>
+    <div class="card"><div class="label">当前连接</div><div class="value">${s.connectionCount}</div>
+      <div class="sub">已接收 ${s.stats.accepted} · 拒绝 ${s.stats.denied} · 上游失败 ${s.stats.upstreamFailed}</div></div>`;
+  if (s.lastError) {
+    showMessage("error", `网关监听异常：${s.lastError}`);
+  }
+}
+
+function renderRules(rules) {
+  if (!rules.length) {
+    $("rules-table").innerHTML = '<div class="empty">暂无活动规则（默认拒绝所有连接）。</div>';
+    return;
+  }
+  const rows = rules.map((r) => `
+    <tr>
+      <td class="mono">${escapeHtml(r.id)}</td>
+      <td><code>${escapeHtml(r.source)}</code> → <code>${escapeHtml(r.destination)}</code></td>
+      <td class="mono">${escapeHtml(r.portRange[0])}-${escapeHtml(r.portRange[1])}</td>
+      <td>${r.action === "allow"
+        ? '<span class="pill on">ALLOW</span>' : '<span class="pill off">DENY</span>'}</td>
+    </tr>`).join("");
+  $("rules-table").innerHTML = `<table><thead><tr><th>id</th><th>源 → 目的</th>
+    <th>端口区间</th><th>动作</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function stateLabel(state) {
+  if (state === "relaying") return '<span class="pill on">转发中</span>';
+  if (state === "connecting") return '<span class="pill" style="border:1px solid var(--warn);color:#fbbf24">连接上游</span>';
+  return `<span class="pill off">${escapeHtml(state)}</span>`;
+}
+
+function renderConnections(connections) {
+  if (!connections.length) {
+    $("connections-table").innerHTML = '<div class="empty">当前没有连接。</div>';
+    return;
+  }
+  const rows = connections.map((c) => `
+    <tr>
+      <td class="mono">#${escapeHtml(c.id)}</td>
+      <td><code>${escapeHtml(c.clientAddress)}</code></td>
+      <td><code>${escapeHtml(c.upstreamAddress)}</code></td>
+      <td>${stateLabel(c.state)}</td>
+      <td>${c.matchedRuleId != null ? `<code>${escapeHtml(c.matchedRuleId)}</code>` : "—"}</td>
+      <td class="mono">${escapeHtml(c.bytesClientToUpstream)} / ${escapeHtml(c.bytesUpstreamToClient)}</td>
+      <td class="mono">${escapeHtml(c.durationSeconds)}s</td>
+      <td>${c.allowed ? "允许" : "拒绝"}</td>
+    </tr>`).join("");
+  $("connections-table").innerHTML = `<table><thead><tr><th>连接</th><th>客户端</th>
+    <th>上游</th><th>状态</th><th>命中规则</th><th>字节 C→U / U→C</th>
+    <th>持续</th><th>策略</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function syncEditor(snapshot) {
+  lastActiveRulesText = JSON.stringify(snapshot.activeRules, null, 2);
+  $("rules-editor").value = lastActiveRulesText;
+}
+
+async function refreshStatus(updateEditor) {
+  try {
+    const resp = await fetch("/api/gateway", { cache: "no-store" });
+    const s = await resp.json();
+    if (!resp.ok) throw new Error(s.message || resp.statusText);
+    renderCards(s);
+    renderRules(s.activeRules || []);
+    renderConnections(s.connections || []);
+    if (updateEditor) syncEditor(s);
+    return s;
+  } catch (err) {
+    showMessage("error", `状态刷新失败：${err}`);
+    return null;
+  }
+}
+
+async function enableRules() {
+  const btn = $("btn-enable");
+  btn.disabled = true;
+  try {
+    let parsed;
+    try {
+      parsed = JSON.parse($("rules-editor").value);
+    } catch (err) {
+      showMessage("error", `规则 JSON 语法错误：${err.message}`);
+      return;
+    }
+    const resp = await fetch("/api/gateway/rules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(parsed),
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) {
+      showMessage("error", data.message || "规则无效，活动规则与连接保持不变。", data.errors || []);
+      await refreshStatus(false);
+      return;
+    }
+    clearMessage();
+    showMessage("ok", `规则已启用：${data.switch.ruleCount} 条活动规则，` +
+      `本次关闭 ${data.switch.closedSessionCount} 条失去权限的连接，` +
+      `${data.switch.keptSessionCount} 条仍获准的连接未中断。`);
+    await refreshStatus(true);
+  } catch (err) {
+    showMessage("error", `启用请求失败：${err}`);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function loadExample() {
+  try {
+    const resp = await fetch("/api/gateway/example");
+    const data = await resp.json();
+    $("rules-editor").value = JSON.stringify(data.example, null, 2);
+    clearMessage();
+  } catch (err) {
+    showMessage("error", `示例加载失败：${err}`);
+  }
+}
+
+async function clearRules() {
+  if (!confirm("清空活动规则后所有连接都会按默认拒绝被关闭，确定继续？")) return;
+  const btn = $("btn-clear");
+  btn.disabled = true;
+  try {
+    const resp = await fetch("/api/gateway/rules", { method: "DELETE" });
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) {
+      showMessage("error", data.message || "清空失败");
+      return;
+    }
+    clearMessage();
+    showMessage("ok", `活动规则已清空（默认拒绝），关闭 ${data.switch.closedSessionCount} 条连接。`);
+    await refreshStatus(true);
+  } catch (err) {
+    showMessage("error", `清空请求失败：${err}`);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+$("btn-enable").addEventListener("click", enableRules);
+$("btn-example").addEventListener("click", loadExample);
+$("btn-clear").addEventListener("click", clearRules);
+$("btn-reload").addEventListener("click", () => {
+  $("rules-editor").value = lastActiveRulesText;
+  clearMessage();
+});
+
+refreshStatus(true);
+setInterval(() => refreshStatus(false), 2000);
+</script>
+</body>
+</html>
